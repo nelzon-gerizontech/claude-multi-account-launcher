@@ -1,0 +1,6 @@
+build/
+lib/
+*.res
+
+*.zip
+dist/
