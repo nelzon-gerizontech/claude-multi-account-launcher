@@ -24,6 +24,10 @@ Use several Claude accounts on one Windows PC, each in its own tab. Every tab ke
 - .NET Framework 4.6.2 or later (built into Windows 10 and 11)
 - Microsoft Edge WebView2 Runtime (built into Windows 11 and most Windows 10 PCs). If it's missing, the app offers Microsoft's download page.
 
+### Mac (preview)
+
+A Mac version is available as a preview for macOS 12 or later, on Apple chip and Intel Macs. See [docs/MAC.md](docs/MAC.md) for download, first-open and test steps. Its source is in the `electron` folder, and GitHub builds and tests it automatically on a Mac.
+
 ## Install
 
 1. Download the latest release zip and unzip the **whole folder** somewhere it will stay, such as Documents.

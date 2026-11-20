@@ -1,0 +1,111 @@
+name: Build Mac app
+
+# Builds the Mac version on GitHub's Mac machines, then opens it and runs the
+# built-in self-test (add, rename, move, delete accounts, then restart and
+# check everything was remembered). Pushing a tag like mac-v3.0.0 also
+# publishes the downloads on the Releases page.
+
+on:
+  push:
+    branches: [main]
+    paths: ['electron/**', '.github/workflows/build-mac.yml']
+    tags: ['mac-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check code
+        run: npm run check
+
+      - name: Build Apple chip and Intel versions
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Check the apps are signed (ad-hoc) and readable
+        run: |
+          set -e
+          for app in dist/mac*/*.app; do
+            echo "== $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            lipo -archs "$app/Contents/MacOS/Claude Multi-Account Launcher"
+            /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist"
+          done
+          ls -la dist
+
+      - name: Self-test on this Mac (Apple chip build)
+        run: |
+          set -o pipefail
+          APP="$(ls -d dist/mac-arm64/*.app)/Contents/MacOS/Claude Multi-Account Launcher"
+          export CMAL_USER_DATA="$RUNNER_TEMP/cmal-data" CMAL_SHOT_DIR="$RUNNER_TEMP/shots" CMAL_SHOW=1
+          rm -rf "$CMAL_USER_DATA"
+          for phase in 1 2; do
+            echo "== self-test phase $phase"
+            CMAL_SELFTEST=$phase CMAL_RESULTS="$RUNNER_TEMP/results-$phase.json" \
+              perl -e 'alarm 120; exec @ARGV' "$APP" 2>&1 | tee "$RUNNER_TEMP/selftest-$phase.log" | grep '\[selftest\]'
+          done
+          screencapture -x "$RUNNER_TEMP/shots/desktop.png" || true
+          # Show each result as a note on the run page.
+          grep -h '\[selftest\]' "$RUNNER_TEMP"/selftest-*.log | sed 's/^/::notice title=Mac self-test::/'
+
+      - name: Upload test screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-selftest
+          path: |
+            ${{ runner.temp }}/shots
+            ${{ runner.temp }}/selftest-*.log
+            ${{ runner.temp }}/results-*.json
+          if-no-files-found: ignore
+
+      - name: Upload Mac downloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-app
+          path: |
+            electron/dist/*.dmg
+            electron/dist/*.zip
+          if-no-files-found: error
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/mac-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Claude Multi-Account Launcher for Mac ${{ github.ref_name }}
+          prerelease: true
+          files: |
+            electron/dist/*.dmg
+            electron/dist/*.zip
+          body: |
+            First Mac test build of Claude Multi-Account Launcher, by Gerizon Technologies.
+
+            **Which file?**
+            - Apple chip Mac (M1, M2, M3, M4 and later): `...-mac-arm64.dmg`
+            - Older Intel Mac: `...-mac-x64.dmg`
+
+            **First open:** this build is not yet signed by Apple, so macOS blocks it the first time.
+            Open the .dmg, drag the app to Applications, try to open it once, then go to
+            **System Settings > Privacy & Security**, scroll down and click **Open Anyway**.
+
+            See `docs/MAC.md` in the repository for full steps.

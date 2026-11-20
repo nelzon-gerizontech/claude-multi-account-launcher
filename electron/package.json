@@ -1,0 +1,70 @@
+{
+  "name": "claude-multi-account-launcher",
+  "productName": "Claude Multi-Account Launcher",
+  "version": "3.0.0",
+  "description": "Switch between several Claude accounts in tabs. Each tab keeps its own sign-in.",
+  "main": "src/main.js",
+  "author": {
+    "name": "Gerizon Technologies",
+    "email": "nelzon.g@gerizontech.com"
+  },
+  "homepage": "https://github.com/nelzon-gerizontech/claude-multi-account-launcher",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --check scripts/after-pack.js",
+    "dist:mac": "electron-builder --mac dmg zip --arm64 --x64 --publish never",
+    "dist:win": "electron-builder --win nsis zip --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.gerizon.claudemultiaccountlauncher",
+    "productName": "Claude Multi-Account Launcher",
+    "copyright": "Copyright (c) 2026 Gerizon Information Technology Solutions",
+    "directories": {
+      "buildResources": "resources",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main.js"
+    },
+    "afterPack": "scripts/after-pack.js",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "resources/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "minimumSystemVersion": "12.0",
+      "artifactName": "ClaudeMultiAccountLauncher-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSHumanReadableCopyright": "Gerizon Technologies. Open source (MIT). Not affiliated with Anthropic.",
+        "NSMicrophoneUsageDescription": "Claude can use the microphone for voice input when you allow it.",
+        "NSCameraUsageDescription": "Claude can use the camera only when you allow it."
+      }
+    },
+    "dmg": {
+      "title": "Claude Multi-Account Launcher"
+    },
+    "win": {
+      "icon": "resources/icon.png",
+      "artifactName": "ClaudeMultiAccountLauncher-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nelzon-gerizontech/claude-multi-account-launcher.git"
+  }
+}

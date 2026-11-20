@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Claude Multi-Account Launcher</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header id="bar">
+    <button id="brand" class="icon brand" title="About Claude Multi-Account Launcher"><img src="mark.png" alt="Gerizon"></button>
+    <nav id="tabs" aria-label="Accounts"></nav>
+    <button id="add" class="icon" title="Add account">+</button>
+    <div class="spacer"></div>
+    <button id="accounts" class="icon" title="All accounts">☰</button>
+    <button id="reload" class="icon" title="Reload this account">⟳</button>
+    <button id="more" class="icon" title="More">⋯</button>
+  </header>
+
+  <main id="empty" hidden>
+    <div class="card">
+      <h1>Add your first Claude account</h1>
+      <p>Each account gets its own tab and stays signed in, even after you quit or restart.
+        Add as many accounts as you need.</p>
+      <button id="empty-add" class="primary">+ Add account</button>
+      <div class="byline">
+        <span>A product of</span>
+        <img src="logo.png" alt="Gerizon Technologies">
+      </div>
+    </div>
+  </main>
+
+  <div id="modal" hidden>
+    <form id="modal-form" class="dialog" autocomplete="off">
+      <h2 id="modal-title">Add account</h2>
+      <label for="modal-name">Name for this tab</label>
+      <input id="modal-name" maxlength="40" placeholder="For example: Work, Personal, Client A">
+      <p class="hint" id="modal-hint">After adding it, sign in to Claude inside the new tab.</p>
+      <div class="buttons">
+        <button type="button" id="modal-cancel">Cancel</button>
+        <button type="submit" class="primary" id="modal-ok">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

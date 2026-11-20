@@ -1,0 +1,114 @@
+:root {
+  --navy: #1A1A2E;
+  --orange: #FF6600;
+  --bg: #F6F5F2;
+  --line: #E2E0DA;
+  --text: #333333;
+  --muted: #6B6A66;
+  --bar: 48px;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--text); background: var(--bg);
+  user-select: none;
+}
+button { font: inherit; color: inherit; }
+
+#bar {
+  height: var(--bar);
+  display: flex; align-items: center; gap: 4px;
+  padding: 0 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+body.mac #bar { padding-left: 80px; }
+body.mac.fullscreen #bar { padding-left: 8px; }
+#bar button, #tabs { -webkit-app-region: no-drag; }
+.spacer { flex: 1; min-width: 12px; }
+
+.icon {
+  width: 32px; height: 32px; flex: none;
+  border: 0; border-radius: 7px; background: transparent;
+  font-size: 18px; line-height: 32px; color: var(--navy); cursor: pointer;
+}
+.icon:hover { background: rgba(26, 26, 46, .08); }
+.icon:active { background: rgba(26, 26, 46, .14); }
+.brand img { width: 22px; height: 22px; vertical-align: middle; }
+#add { font-size: 22px; font-weight: 300; }
+
+#tabs {
+  display: flex; gap: 4px; min-width: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+#tabs::-webkit-scrollbar { display: none; }
+.tab {
+  position: relative; flex: none;
+  display: flex; align-items: center; gap: 8px;
+  height: 36px; max-width: 220px;
+  padding: 0 12px 0 6px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; cursor: pointer;
+}
+.tab:hover { background: rgba(26, 26, 46, .06); }
+.tab.active { background: #FFFFFF; border-color: var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.tab.active::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px;
+  height: 3px; border-radius: 2px; background: var(--orange);
+}
+.avatar {
+  width: 24px; height: 24px; flex: none; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #FFFFFF; font-size: 11px; font-weight: 600; letter-spacing: .3px;
+}
+.tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.tab .dot {
+  width: 8px; height: 8px; flex: none; border-radius: 50%;
+  background: var(--orange); box-shadow: 0 0 0 2px #FFFFFF;
+}
+
+#empty {
+  position: absolute; inset: var(--bar) 0 0 0;
+  display: grid; place-items: center;
+}
+#empty[hidden] { display: none; }
+.card { text-align: center; max-width: 440px; padding: 24px; }
+.card h1 { font-size: 22px; color: var(--navy); margin: 0 0 10px; }
+.card p { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
+.byline { margin-top: 44px; color: var(--muted); font-size: 12px; }
+.byline img { display: block; margin: 8px auto 0; height: 34px; }
+
+.primary {
+  border: 0; border-radius: 8px; padding: 9px 18px;
+  background: var(--navy); color: #FFFFFF; font-weight: 600; cursor: pointer;
+}
+.primary:hover { background: #2A2A48; }
+.primary:focus-visible, .dialog button:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+#modal {
+  position: fixed; inset: 0; z-index: 10;
+  display: grid; place-items: center;
+  background: rgba(26, 26, 46, .35);
+}
+#modal[hidden] { display: none; }
+.dialog {
+  width: 380px; padding: 22px;
+  background: #FFFFFF; border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+  user-select: text;
+}
+.dialog h2 { margin: 0 0 14px; font-size: 17px; color: var(--navy); }
+.dialog label { display: block; font-weight: 600; margin-bottom: 6px; }
+.dialog input {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 14px;
+  border: 1px solid #C9C6BE; border-radius: 7px; outline: none;
+}
+.dialog input:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255, 102, 0, .18); }
+.dialog .hint { color: var(--muted); margin: 8px 0 18px; font-size: 12px; }
+.dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog .buttons button:not(.primary) {
+  border: 1px solid #C9C6BE; border-radius: 8px; padding: 8px 16px;
+  background: #FFFFFF; cursor: pointer;
+}
