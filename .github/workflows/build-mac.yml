@@ -55,18 +55,24 @@ jobs:
 
       - name: Self-test on this Mac (Apple chip build)
         run: |
-          set -o pipefail
           APP="$(ls -d dist/mac-arm64/*.app)/Contents/MacOS/Claude Multi-Account Launcher"
           export CMAL_USER_DATA="$RUNNER_TEMP/cmal-data" CMAL_SHOT_DIR="$RUNNER_TEMP/shots" CMAL_SHOW=1
-          rm -rf "$CMAL_USER_DATA"
+          rm -rf "$CMAL_USER_DATA"; mkdir -p "$CMAL_SHOT_DIR"
+          status=0
           for phase in 1 2; do
-            echo "== self-test phase $phase"
+            log="$RUNNER_TEMP/selftest-$phase.log"
             CMAL_SELFTEST=$phase CMAL_RESULTS="$RUNNER_TEMP/results-$phase.json" \
-              perl -e 'alarm 120; exec @ARGV' "$APP" 2>&1 | tee "$RUNNER_TEMP/selftest-$phase.log" | grep '\[selftest\]'
+              perl -e 'alarm 150; exec @ARGV' "$APP" > "$log" 2>&1
+            code=$?
+            echo "== phase $phase exit $code"; cat "$log"
+            # Put the results on the run page (one note per phase, lines joined).
+            body=$(grep '\[selftest\]' "$log" | tail -20; echo "exit code $code"; echo "--- last log lines:"; grep -v '\[selftest\]' "$log" | tail -12)
+            body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+            if [ "$code" = 0 ]; then echo "::notice title=Mac self-test phase $phase::$body"; else echo "::error title=Mac self-test phase $phase::$body"; status=1; fi
+            [ "$code" = 0 ] || break
           done
-          screencapture -x "$RUNNER_TEMP/shots/desktop.png" || true
-          # Show each result as a note on the run page.
-          grep -h '\[selftest\]' "$RUNNER_TEMP"/selftest-*.log | sed 's/^/::notice title=Mac self-test::/'
+          screencapture -x "$CMAL_SHOT_DIR/desktop.png" || true
+          exit $status
 
       - name: Upload test screenshots and logs
         if: always()
