@@ -2,8 +2,8 @@ name: Build Mac app
 
 # Builds the Mac version on GitHub's Mac machines, then opens it and runs the
 # built-in self-test (add, rename, move, delete accounts, then restart and
-# check everything was remembered). Pushing a tag like mac-v3.0.0 also
-# publishes the downloads on the Releases page.
+# check everything was remembered). Each successful build on main publishes
+# the downloads on the Releases page as mac-v<version> (from package.json).
 
 on:
   push:
@@ -94,11 +94,18 @@ jobs:
             electron/dist/*.zip
           if-no-files-found: error
 
-      - name: Publish release (tags only)
-        if: startsWith(github.ref, 'refs/tags/mac-v')
+      - name: Read version
+        id: version
+        run: echo "tag=mac-v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release (main branch and mac-v tags)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/mac-v')
         uses: softprops/action-gh-release@v2
         with:
-          name: Claude Multi-Account Launcher for Mac ${{ github.ref_name }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          overwrite_files: true
+          name: Claude Multi-Account Launcher for Mac ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || steps.version.outputs.tag }}
           prerelease: true
           files: |
             electron/dist/*.dmg
