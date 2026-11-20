@@ -58,19 +58,12 @@ jobs:
           APP="$(ls -d dist/mac-arm64/*.app)/Contents/MacOS/Claude Multi-Account Launcher"
           export CMAL_USER_DATA="$RUNNER_TEMP/cmal-data" CMAL_SHOT_DIR="$RUNNER_TEMP/shots" CMAL_SHOW=1
           rm -rf "$CMAL_USER_DATA"; mkdir -p "$CMAL_SHOT_DIR"
-          export CMAL_TRACE="$RUNNER_TEMP/trace.txt"
-          # Diagnostics: what is in the app, and does it start at all?
-          diag=$( ls -la "$(dirname "$APP")/../Resources" | head -20; npx --yes @electron/asar list "$(dirname "$APP")/../Resources/app.asar" | head -20;
-                  start=$(date +%s); CMAL_SELFTEST=1 perl -e 'alarm 60; exec @ARGV' "$APP" --enable-logging=stderr --v=0 > "$RUNNER_TEMP/raw.log" 2>&1; echo "raw exit $? after $(( $(date +%s)-start ))s";
-                  head -c 2500 "$RUNNER_TEMP/raw.log"; echo "trace:"; cat "$CMAL_TRACE" 2>/dev/null )
-          echo "$diag"
-          echo "::notice title=Mac diagnostics::$(printf '%s' "$diag" | python3 -c 'import sys;print(sys.stdin.read().replace("%","%25").replace("\r","").replace("\n","%0A"))')"
           rm -rf "$CMAL_USER_DATA"; mkdir -p "$CMAL_SHOT_DIR"
           status=0
           for phase in 1 2; do
             log="$RUNNER_TEMP/selftest-$phase.log"
             CMAL_SELFTEST=$phase CMAL_RESULTS="$RUNNER_TEMP/results-$phase.json" \
-              perl -e 'alarm 150; exec @ARGV' "$APP" > "$log" 2>&1
+              perl -e 'alarm 150; exec { $ARGV[0] } @ARGV' "$APP" > "$log" 2>&1
             code=$?
             echo "== phase $phase exit $code"; cat "$log"
             # Put the results on the run page (one note per phase, lines joined).

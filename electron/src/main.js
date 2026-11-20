@@ -35,9 +35,6 @@ const ALLOWED_PERMISSIONS = new Set([
   'fullscreen', 'pointerLock',
 ]);
 
-if (process.env.CMAL_TRACE) {
-  try { fs.appendFileSync(process.env.CMAL_TRACE, `main.js loaded ${new Date().toISOString()} argv=${JSON.stringify(process.argv)}\n`); } catch { /* ignore */ }
-}
 if (process.env.CMAL_USER_DATA) app.setPath('userData', process.env.CMAL_USER_DATA);
 
 // ---------------------------------------------------------------- helpers
@@ -493,7 +490,7 @@ function createWindow() {
     autoHideMenuBar: true,
     titleBarStyle: IS_MAC ? 'hiddenInset' : 'default',
     trafficLightPosition: IS_MAC ? { x: 14, y: 16 } : undefined,
-    icon: IS_MAC ? undefined : path.join(__dirname, 'mark.png'),
+    ...(IS_MAC ? {} : { icon: path.join(__dirname, 'mark.png') }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -609,8 +606,14 @@ async function runSelfTest() {
     selectAccount(work.id);
     await waitLoad(views.get(work.id).webContents);
     await wait(2500);
-    const url = views.get(work.id).webContents.getURL();
+    const wc = views.get(work.id).webContents;
+    const url = wc.getURL();
     check('Claude page loads in a tab', /^https:\/\//.test(url), url);
+    try {
+      const info = await wc.executeJavaScript(
+        'JSON.stringify({title: document.title, text: document.body ? document.body.innerText.slice(0, 160).replace(/\\s+/g, " ") : ""})');
+      console.log('[selftest] INFO page shows ' + info);
+    } catch (e) { console.log('[selftest] INFO page text unavailable: ' + e.message); }
     if (shots) {
       try {
         fs.mkdirSync(shots, { recursive: true });
