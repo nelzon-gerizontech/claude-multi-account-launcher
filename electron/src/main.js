@@ -35,6 +35,9 @@ const ALLOWED_PERMISSIONS = new Set([
   'fullscreen', 'pointerLock',
 ]);
 
+if (process.env.CMAL_TRACE) {
+  try { fs.appendFileSync(process.env.CMAL_TRACE, `main.js loaded ${new Date().toISOString()} argv=${JSON.stringify(process.argv)}\n`); } catch { /* ignore */ }
+}
 if (process.env.CMAL_USER_DATA) app.setPath('userData', process.env.CMAL_USER_DATA);
 
 // ---------------------------------------------------------------- helpers
