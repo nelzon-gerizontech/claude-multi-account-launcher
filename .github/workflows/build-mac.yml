@@ -66,8 +66,8 @@ jobs:
             code=$?
             echo "== phase $phase exit $code"; cat "$log"
             # Put the results on the run page (one note per phase, lines joined).
-            body=$(grep '\[selftest\]' "$log" | tail -20; echo "exit code $code"; echo "--- last log lines:"; grep -v '\[selftest\]' "$log" | tail -12)
-            body="${body//'%'/'%25'}"; body="${body//$'\n'/'%0A'}"
+            body=$(grep '\[selftest\]' "$log" | tail -20; echo "exit code $code, log $(wc -c < "$log") bytes"; ls "$RUNNER_TEMP" | tr '\n' ' '; echo; cat "$RUNNER_TEMP/results-$phase.json" 2>/dev/null | head -c 1500; echo "--- last log lines:"; grep -v '\[selftest\]' "$log" | tail -12)
+            body=$(printf '%s' "$body" | python3 -c 'import sys;print(sys.stdin.read().replace("%","%25").replace("\r","").replace("\n","%0A"))')
             if [ "$code" = 0 ]; then echo "::notice title=Mac self-test phase $phase::$body"; else echo "::error title=Mac self-test phase $phase::$body"; status=1; fi
             [ "$code" = 0 ] || break
           done

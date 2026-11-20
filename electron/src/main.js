@@ -637,7 +637,12 @@ async function runSelfTest() {
 
 // ---------------------------------------------------------------- start
 
+if (SELFTEST) {
+  console.log(`[selftest] starting ${app.getVersion()} on ${process.platform}-${process.arch}, data ${app.getPath('userData')}`);
+  process.on('exit', code => console.log('[selftest] exit ' + code));
+}
 if (!app.requestSingleInstanceLock()) {
+  if (SELFTEST) console.log('[selftest] FAIL another copy is already running');
   app.quit();
 } else {
   app.on('second-instance', () => {
