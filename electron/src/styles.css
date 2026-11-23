@@ -112,3 +112,15 @@ body.mac.fullscreen #bar { padding-left: 8px; }
   border: 1px solid #C9C6BE; border-radius: 8px; padding: 8px 16px;
   background: #FFFFFF; cursor: pointer;
 }
+
+.icon:disabled { opacity: .35; cursor: default; background: transparent; }
+
+#away {
+  position: absolute; left: 0; right: 0; top: var(--bar); height: 44px;
+  display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px;
+  background: #E8EEFA; border-bottom: 1px solid var(--line);
+}
+#away[hidden] { display: none; }
+#away-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#away button { flex: none; padding: 6px 14px; }
+#away-back { border: 1px solid #C9C6BE; border-radius: 8px; background: #FFFFFF; cursor: pointer; }

@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('cmal', {
   moreMenu: () => ipcRenderer.send('more-menu'),
   accountsMenu: () => ipcRenderer.send('accounts-menu'),
   reload: () => ipcRenderer.send('reload'),
+  back: () => ipcRenderer.send('back'),
+  home: () => ipcRenderer.send('home'),
   about: () => ipcRenderer.send('about'),
   setOverlay: on => ipcRenderer.send('overlay', !!on),
   onState: fn => ipcRenderer.on('state', (e, s) => fn(s)),

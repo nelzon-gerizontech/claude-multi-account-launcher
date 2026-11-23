@@ -1,4 +1,4 @@
-// Claude Multi-Account Launcher v2.1 by Gerizon Technologies - one window, one tab per Claude account.
+// Claude Multi-Account Launcher v2.2 by Gerizon Technologies - one window, one tab per Claude account.
 // Each tab shows claude.ai in Microsoft Edge WebView2 with its own, separate sign-in
 // (its own browser data folder), so switching accounts is just clicking a tab.
 // Open-source software (MIT License). Copyright (c) 2026 Gerizon Information Technology Solutions.
@@ -32,8 +32,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTrademark("Claude is a trademark of Anthropic, PBC. This product is not affiliated with Anthropic.")]
 [assembly: AssemblyCompany("Gerizon Information Technology Solutions")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Gerizon Information Technology Solutions")]
-[assembly: AssemblyVersion("2.1.0.0")]
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyVersion("2.2.0.0")]
+[assembly: AssemblyFileVersion("2.2.0.0")]
 
 namespace Gerizon.ClaudeMultiAccountLauncher
 {
@@ -377,6 +377,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         {
             await View.EnsureCoreWebView2Async(env);
             View.CoreWebView2.WindowCloseRequested += delegate { Close(); };
+            // A link inside the pop-up that wants yet another window opens in this pop-up instead.
+            View.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; View.CoreWebView2.Navigate(e.Uri); };
             View.CoreWebView2.DocumentTitleChanged += delegate { if (!string.IsNullOrEmpty(View.CoreWebView2.DocumentTitle)) Text = View.CoreWebView2.DocumentTitle; };
         }
     }
@@ -389,7 +391,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         readonly MainForm owner;
         WebView2 view;
         CoreWebView2Environment env;
-        readonly Panel banner;
+        readonly Panel banner, away;
+        readonly Label awayMsg;
         readonly Label loading;
         bool started;
 
@@ -427,6 +430,45 @@ namespace Gerizon.ClaudeMultiAccountLauncher
                 msg.Width = Math.Max(Ui.S(100), paste.Left - Ui.S(24));
             };
             Controls.Add(banner);
+
+            // Shown when this tab has left Claude (for example a connector or sign-in page
+            // from another company that ended on an error), with a way back.
+            away = new Panel { Dock = DockStyle.Top, Height = Ui.S(46), BackColor = Color.FromArgb(232, 238, 250), Visible = false };
+            awayMsg = new Label
+            {
+                AutoSize = false, Location = new Point(Ui.S(14), 0), Height = Ui.S(46), Width = Ui.S(600),
+                TextAlign = ContentAlignment.MiddleLeft, ForeColor = Look.Text, Font = new Font("Segoe UI", 9.5f),
+                Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
+            };
+            var home = Ui.Primary("Back to Claude");
+            home.Font = new Font("Segoe UI Semibold", 9f);
+            home.Size = new Size(Ui.S(130), Ui.S(30));
+            home.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            home.Click += delegate { GoHome(); };
+            var back = new Button { Text = "Go back", FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = Look.Text, Cursor = Cursors.Hand, Size = new Size(Ui.S(90), Ui.S(30)), Font = new Font("Segoe UI", 9f), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            back.FlatAppearance.BorderColor = Look.Border;
+            back.Click += delegate { GoBack(); };
+            away.Controls.Add(home);
+            away.Controls.Add(back);
+            away.Controls.Add(awayMsg);
+            away.Resize += delegate
+            {
+                home.Location = new Point(away.Width - home.Width - Ui.S(12), (away.Height - home.Height) / 2);
+                back.Location = new Point(home.Left - back.Width - Ui.S(8), (away.Height - back.Height) / 2);
+                awayMsg.Width = Math.Max(Ui.S(100), back.Left - Ui.S(24));
+            };
+            Controls.Add(away);
+        }
+
+        void UpdateAway()
+        {
+            if (view == null || view.CoreWebView2 == null) return;
+            Uri u;
+            bool off = Uri.TryCreate(view.CoreWebView2.Source, UriKind.Absolute, out u)
+                && (u.Scheme == "http" || u.Scheme == "https") && !IsClaudeHost(u.Host);
+            if (off) awayMsg.Text = "This tab is showing a page from " + u.Host + ", not Claude. If it's stuck or showing an error, go back to Claude.";
+            away.Visible = off;
+            if (off) banner.Visible = false;
         }
 
         // WebView2 is created the first time the tab is shown, so unused tabs cost nothing.
@@ -461,7 +503,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
                     try { m = e.TryGetWebMessageAsString(); } catch { }
                     if (m != null) owner.HandleShortcut(m);
                 };
-                core.SourceChanged += delegate { CheckSignedIn(); };
+                core.SourceChanged += delegate { CheckSignedIn(); UpdateAway(); };
+                core.HistoryChanged += delegate { owner.UpdateNav(this); };
                 core.NavigationCompleted += (s, e) =>
                 {
                     Controls.Remove(loading);
@@ -511,12 +554,15 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         {
             Uri uri;
             if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out uri)) { e.Handled = true; return; }
-            if (IsSignInHost(uri.Host) || (IsClaudeHost(uri.Host) && uri.AbsolutePath.IndexOf("login", StringComparison.OrdinalIgnoreCase) >= 0))
+            // Sign-in pages and Claude's own pop-ups (such as connecting a connector) open in a
+            // separate window that shares this account, so the tab itself stays on Claude and
+            // the pop-up can simply be closed if something goes wrong.
+            if (IsSignInHost(uri.Host) || IsClaudeHost(uri.Host))
             {
                 var deferral = e.GetDeferral();
                 try
                 {
-                    var pop = new PopupForm("Sign in - " + Account.Name);
+                    var pop = new PopupForm(Account.Name + " - " + Brand.Name);
                     pop.Show(owner);
                     await pop.Init(env);
                     e.NewWindow = pop.View.CoreWebView2;
@@ -527,7 +573,6 @@ namespace Gerizon.ClaudeMultiAccountLauncher
                 return;
             }
             e.Handled = true;
-            if (IsClaudeHost(uri.Host)) { view.CoreWebView2.Navigate(uri.AbsoluteUri); return; }
             if (uri.Scheme == "http" || uri.Scheme == "https" || uri.Scheme == "mailto") Ui.OpenInDefaultBrowser(uri.AbsoluteUri);
         }
 
@@ -567,6 +612,13 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         {
             if (view != null && view.CoreWebView2 != null) view.CoreWebView2.Reload();
             else { started = false; EnsureStarted(); }
+        }
+
+        public bool CanGoBack { get { return view != null && view.CoreWebView2 != null && view.CoreWebView2.CanGoBack; } }
+
+        public void GoBack()
+        {
+            if (CanGoBack) view.CoreWebView2.GoBack(); else GoHome();
         }
 
         public void GoHome()
@@ -633,7 +685,7 @@ namespace Gerizon.ClaudeMultiAccountLauncher
     {
         readonly Store store;
         readonly Panel bar, tabArea, content, empty;
-        readonly Button addBtn, allBtn, reloadBtn, menuBtn;
+        readonly Button addBtn, allBtn, backBtn, homeBtn, reloadBtn, menuBtn;
         readonly Label status;
         readonly ToolTip tips = new ToolTip();
         readonly List<TabButton> tabs = new List<TabButton>();
@@ -679,11 +731,15 @@ namespace Gerizon.ClaudeMultiAccountLauncher
 
             allBtn = Ui.BarButton("☰", "All accounts", tips);
             allBtn.Click += delegate { ShowAllMenu(); };
+            backBtn = Ui.BarButton("←", "Go back (Alt+Left)", tips);
+            backBtn.Click += delegate { if (CurrentPage() != null) CurrentPage().GoBack(); };
+            homeBtn = Ui.BarButton("⌂", "Back to Claude home (Alt+Home)", tips);
+            homeBtn.Click += delegate { if (CurrentPage() != null) CurrentPage().GoHome(); };
             reloadBtn = Ui.BarButton("⟳", "Reload this tab (F5)", tips);
             reloadBtn.Click += delegate { if (CurrentPage() != null) CurrentPage().Reload(); };
             menuBtn = Ui.BarButton("⋯", "More options", tips);
             menuBtn.Click += delegate { ShowAccountMenu(active, menuBtn, true); };
-            bar.Controls.Add(allBtn); bar.Controls.Add(reloadBtn); bar.Controls.Add(menuBtn);
+            bar.Controls.Add(allBtn); bar.Controls.Add(backBtn); bar.Controls.Add(homeBtn); bar.Controls.Add(reloadBtn); bar.Controls.Add(menuBtn);
             bar.Resize += delegate { LayoutBar(); };
 
             empty = BuildEmptyState();
@@ -744,6 +800,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             int right = bar.Width - Ui.S(6);
             menuBtn.Location = new Point(right - menuBtn.Width, Ui.S(6)); right = menuBtn.Left;
             reloadBtn.Location = new Point(right - reloadBtn.Width, Ui.S(6)); right = reloadBtn.Left;
+            homeBtn.Location = new Point(right - homeBtn.Width, Ui.S(6)); right = homeBtn.Left;
+            backBtn.Location = new Point(right - backBtn.Width, Ui.S(6)); right = backBtn.Left;
             allBtn.Location = new Point(right - allBtn.Width, Ui.S(6)); right = allBtn.Left - Ui.S(8);
             tabArea.Width = Math.Max(Ui.S(100), right - tabArea.Left);
 
@@ -764,7 +822,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             addBtn.Location = new Point(addX + Ui.S(2), (tabArea.Height - addBtn.Height) / 2 - Ui.S(2));
             bool hidden = tabs.Any(t => !t.Visible);
             tips.SetToolTip(allBtn, hidden ? "All accounts (some tabs are hidden - window is narrow)" : "All accounts");
-            reloadBtn.Enabled = menuBtn.Enabled = active != null;
+            reloadBtn.Enabled = menuBtn.Enabled = homeBtn.Enabled = active != null;
+            backBtn.Enabled = CurrentPage() != null && CurrentPage().CanGoBack;
         }
 
         public void Select(Account a)
@@ -834,7 +893,9 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             var page = pages[a.Id];
             var paste = new ToolStripMenuItem("Paste sign-in link");
             paste.Click += delegate { Select(a); page.PasteSignInLink(); };
-            var home = new ToolStripMenuItem("New chat");
+            var back = new ToolStripMenuItem("Go back") { ShortcutKeyDisplayString = "Alt+Left" };
+            back.Click += delegate { Select(a); page.GoBack(); };
+            var home = new ToolStripMenuItem("Back to Claude home") { ShortcutKeyDisplayString = "Alt+Home" };
             home.Click += delegate { Select(a); page.GoHome(); };
             var reload = new ToolStripMenuItem("Reload") { ShortcutKeyDisplayString = "F5" };
             reload.Click += delegate { Select(a); page.Reload(); };
@@ -848,7 +909,7 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             right.Click += delegate { MoveTab(a, 1); };
             var remove = new ToolStripMenuItem("Delete account...") { ForeColor = Color.FromArgb(185, 28, 28) };
             remove.Click += delegate { Remove(a); };
-            m.Items.AddRange(new ToolStripItem[] { home, reload, paste, new ToolStripSeparator(), rename, color, left, right, new ToolStripSeparator(), remove });
+            m.Items.AddRange(new ToolStripItem[] { back, home, reload, paste, new ToolStripSeparator(), rename, color, left, right, new ToolStripSeparator(), remove });
             m.Closed += delegate { BeginInvoke((MethodInvoker)delegate { m.Dispose(); }); };
             if (below) m.Show(anchor, new Point(anchor.Width, anchor.Height), ToolStripDropDownDirection.BelowLeft);
             else m.Show(anchor, new Point(0, anchor.Height));
@@ -990,6 +1051,11 @@ namespace Gerizon.ClaudeMultiAccountLauncher
 
         // ---- keyboard
 
+        public void UpdateNav(AccountPage p)
+        {
+            if (p != null && p == CurrentPage()) backBtn.Enabled = p.CanGoBack;
+        }
+
         public void HandleShortcut(string m)
         {
             if (m == "add") { AddAccount(); return; }
@@ -1025,6 +1091,9 @@ namespace Gerizon.ClaudeMultiAccountLauncher
                 if (i < store.Accounts.Count) { Select(store.Accounts[i]); return true; }
             }
             if (key == Keys.F5 && CurrentPage() != null) { CurrentPage().Reload(); return true; }
+            bool alt = (keyData & Keys.Alt) != 0;
+            if (alt && !ctrl && key == Keys.Left && CurrentPage() != null) { CurrentPage().GoBack(); return true; }
+            if (alt && !ctrl && key == Keys.Home && CurrentPage() != null) { CurrentPage().GoHome(); return true; }
             return base.ProcessCmdKey(ref msg, keyData);
         }
 

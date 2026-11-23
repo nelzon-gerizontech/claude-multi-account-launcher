@@ -49,6 +49,14 @@
     if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     $('empty').hidden = state.accounts.length > 0;
     $('reload').disabled = !state.activeId;
+    $('home').disabled = !state.activeId;
+    $('back').disabled = !state.activeId || !state.canGoBack;
+    const back = state.platform === 'darwin' ? '⌘[' : 'Alt+Left';
+    $('back').title = 'Go back (' + back + ')';
+    $('away').hidden = !state.away;
+    $('away-text').textContent = state.away
+      ? `This tab is showing a page from ${state.away}, not Claude. If it's stuck or showing an error, go back to Claude.`
+      : '';
     $('more').disabled = false;
   }
 
@@ -86,6 +94,10 @@
   $('empty-add').addEventListener('click', () => openPrompt({ mode: 'add' }));
   $('accounts').addEventListener('click', () => api.accountsMenu());
   $('reload').addEventListener('click', () => api.reload());
+  $('back').addEventListener('click', () => api.back());
+  $('home').addEventListener('click', () => api.home());
+  $('away-back').addEventListener('click', () => api.back());
+  $('away-home').addEventListener('click', () => api.home());
   $('more').addEventListener('click', () => api.moreMenu());
   tabs.addEventListener('wheel', e => {
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { tabs.scrollLeft += e.deltaY; e.preventDefault(); }

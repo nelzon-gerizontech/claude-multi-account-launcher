@@ -21,6 +21,11 @@ Click + (or press Ctrl+T), name the tab, then sign in inside it.
 If Claude emails you a sign-in link, don't click it. Right-click the link,
 choose "Copy link", then click "Paste sign-in link" in the tab.
 
+STUCK ON AN ERROR PAGE?
+If a tab ends up on another company's page (for example a connector sign-in
+that shows an error), click "Back to Claude" in the blue strip, or use the
+back (←) and home (⌂) buttons at the top right. Alt+Left goes back.
+
 SWITCH ACCOUNTS
 Click a tab, or press Ctrl+1 to Ctrl+9 or Ctrl+Tab.
 

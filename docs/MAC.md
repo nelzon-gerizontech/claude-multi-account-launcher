@@ -37,7 +37,8 @@ xattr -dr com.apple.quarantine "/Applications/Claude Multi-Account Launcher.app"
 - Click **+** to add an account, then sign in inside its tab.
 - Right-click a tab to rename, move, reload or delete it. Double-click a tab to rename it.
 - An orange dot means that tab is not signed in yet.
-- Shortcuts: ⌘T add account, ⌘1 to ⌘9 jump to a tab, Ctrl+Tab next tab, ⌘R reload.
+- If a tab ends up on another company's page or an error (for example while connecting a connector), click **Back to Claude** in the blue strip, or use the ← and ⌂ buttons.
+- Shortcuts: ⌘T add account, ⌘[ go back, ⌘⇧H back to Claude home, ⌘1 to ⌘9 jump to a tab, Ctrl+Tab next tab, ⌘R reload.
 - If Google sign-in is refused, sign in with your email. When the sign-in email arrives, copy its link, then choose **Paste sign-in link** from the ⋯ menu.
 
 Data is kept in `~/Library/Application Support/Claude Multi-Account Launcher`. Deleting an account in the app removes its data there.

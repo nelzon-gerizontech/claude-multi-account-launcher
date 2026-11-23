@@ -26,10 +26,12 @@ const BRAND = {
 
 const IS_MAC = process.platform === 'darwin';
 const BAR = 48; // height of the tab bar, in pixels
+const AWAY = 44; // height of the "you have left Claude" strip
 const START_URL = process.env.CMAL_START_URL || 'https://claude.ai/new';
 const SELFTEST = process.env.CMAL_SELFTEST || ''; // '1' or '2' (test phases)
 const CLAUDE_HOSTS = ['claude.ai', 'claude.com', 'anthropic.com'];
-const SIGNIN_HOSTS = CLAUDE_HOSTS.concat(['accounts.google.com', 'appleid.apple.com']);
+const SIGNIN_HOSTS = CLAUDE_HOSTS.concat(['accounts.google.com', 'appleid.apple.com',
+  'login.microsoftonline.com', 'login.live.com']);
 const ALLOWED_PERMISSIONS = new Set([
   'media', 'clipboard-read', 'clipboard-sanitized-write', 'notifications',
   'fullscreen', 'pointerLock',
@@ -113,23 +115,41 @@ let overlay = false; // true while a dialog in the tab bar window covers the pag
 const findAccount = id => store.accounts.find(a => a.id === id);
 const activeAccount = () => findAccount(store.activeId);
 
-function pushState() {
-  if (!win || win.isDestroyed()) return;
-  win.webContents.send('state', {
+// Navigation details of the active tab: can it go back, and has it left Claude?
+function navState() {
+  const view = views.get(store.activeId);
+  if (!view) return { canGoBack: false, away: null };
+  const wc = view.webContents;
+  const host = httpsHost(wc.getURL()) || (/^http:/i.test(wc.getURL()) ? new URL(wc.getURL()).hostname : null);
+  return {
+    canGoBack: wc.navigationHistory.canGoBack(),
+    away: host && !hostIn(host, CLAUDE_HOSTS) ? host : null,
+  };
+}
+
+function snapshot() {
+  return Object.assign({
     accounts: store.accounts,
     activeId: store.activeId,
     platform: process.platform,
-  });
+  }, navState());
+}
+
+function pushState() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('state', snapshot());
+  layout();
   buildAppMenu();
 }
 
 function layout() {
   if (!win || win.isDestroyed()) return;
   const [w, h] = win.getContentSize();
+  const top = BAR + (navState().away ? AWAY : 0);
   for (const [id, view] of views) {
     const show = id === store.activeId && !overlay;
     view.setVisible(show);
-    if (show) view.setBounds({ x: 0, y: BAR, width: w, height: Math.max(0, h - BAR) });
+    if (show) view.setBounds({ x: 0, y: top, width: w, height: Math.max(0, h - top) });
   }
 }
 
@@ -157,11 +177,10 @@ function updateSignedIn(id, url) {
   const acct = findAccount(id);
   if (!acct) return;
   const host = httpsHost(url);
-  let signedIn = false;
-  if (hostIn(host, ['claude.ai'])) {
-    const p = new URL(url).pathname.toLowerCase();
-    signedIn = !/^\/(login|logout|signup|magic-link|onboarding|verify)/.test(p);
-  }
+  // Pages outside claude.ai (sign-in or connector pages) say nothing about sign-in.
+  if (!hostIn(host, ['claude.ai'])) return;
+  const p = new URL(url).pathname.toLowerCase();
+  const signedIn = !/^\/(login|logout|signup|magic-link|onboarding|verify)/.test(p);
   if (acct.signedIn !== signedIn) {
     acct.signedIn = signedIn;
     saveStore();
@@ -194,7 +213,7 @@ function getView(acct) {
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  const refresh = () => updateSignedIn(acct.id, wc.getURL());
+  const refresh = () => { updateSignedIn(acct.id, wc.getURL()); pushState(); };
   wc.on('did-navigate', refresh);
   wc.on('did-navigate-in-page', refresh);
   wc.on('did-fail-load', (e, code, desc, url, isMain) => {
@@ -292,6 +311,18 @@ async function deleteAccount(id, skipConfirm) {
   return true;
 }
 
+function goBack() {
+  const view = views.get(store.activeId);
+  if (!view) return;
+  const history = view.webContents.navigationHistory;
+  if (history.canGoBack()) history.goBack(); else goHome();
+}
+
+function goHome() {
+  const view = views.get(store.activeId);
+  if (view) view.webContents.loadURL(START_URL);
+}
+
 function reloadActive(ignoreCache) {
   const view = views.get(store.activeId);
   if (!view) return;
@@ -379,6 +410,8 @@ function accountMenuItems(id) {
     { label: 'Move left', enabled: i > 0, click: () => moveAccount(id, -1) },
     { label: 'Move right', enabled: i < store.accounts.length - 1, click: () => moveAccount(id, 1) },
     { type: 'separator' },
+    { label: 'Go back', click: () => { selectAccount(id); goBack(); } },
+    { label: 'Back to Claude home', click: () => { selectAccount(id); goHome(); } },
     { label: 'Reload', click: () => { selectAccount(id); reloadActive(false); } },
     { label: 'Paste sign-in link', click: () => pasteSignInLink(id) },
     { type: 'separator' },
@@ -424,6 +457,9 @@ function buildAppMenu() {
     {
       label: 'View',
       submenu: [
+        { label: 'Go back', accelerator: IS_MAC ? 'Cmd+[' : 'Alt+Left', enabled: hasActive, click: goBack },
+        { label: 'Back to Claude home', accelerator: IS_MAC ? 'Cmd+Shift+H' : 'Alt+Home', enabled: hasActive, click: goHome },
+        { type: 'separator' },
         { label: 'Reload', accelerator: 'CmdOrCtrl+R', enabled: hasActive, click: () => reloadActive(false) },
         { label: 'Reload (clear cache)', accelerator: 'CmdOrCtrl+Shift+R', enabled: hasActive, click: () => reloadActive(true) },
         { type: 'separator' },
@@ -527,9 +563,9 @@ function fromUi(handler) {
     return handler(...args);
   };
 }
-ipcMain.handle('get-state', fromUi(() => ({
-  accounts: store.accounts, activeId: store.activeId, platform: process.platform,
-})));
+ipcMain.handle('get-state', fromUi(() => snapshot()));
+ipcMain.on('back', fromUi(() => goBack()));
+ipcMain.on('home', fromUi(() => goHome()));
 ipcMain.on('add', fromUi(name => addAccount(name)));
 ipcMain.on('rename', fromUi((id, name) => renameAccount(id, name)));
 ipcMain.on('select', fromUi(id => selectAccount(id)));
@@ -614,6 +650,13 @@ async function runSelfTest() {
         'JSON.stringify({title: document.title, text: document.body ? document.body.innerText.slice(0, 160).replace(/\\s+/g, " ") : ""})');
       console.log('[selftest] INFO page shows ' + info);
     } catch (e) { console.log('[selftest] INFO page text unavailable: ' + e.message); }
+    await wc.loadURL('https://github.com/').catch(() => {});
+    await wait(500);
+    check('leaving Claude shows the way-back strip', navState().away === 'github.com', JSON.stringify(navState()));
+    goBack();
+    await waitLoad(wc);
+    await wait(800);
+    check('Go back returns to Claude', hostIn(httpsHost(wc.getURL()), CLAUDE_HOSTS) && !navState().away, wc.getURL());
     if (shots) {
       try {
         fs.mkdirSync(shots, { recursive: true });
