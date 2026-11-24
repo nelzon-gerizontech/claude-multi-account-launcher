@@ -1,4 +1,4 @@
-// Claude Multi-Account Launcher v2.2 by Gerizon Technologies - one window, one tab per Claude account.
+// Claude Multi-Account Launcher v2.3 by Gerizon Technologies - one window, one tab per Claude account.
 // Each tab shows claude.ai in Microsoft Edge WebView2 with its own, separate sign-in
 // (its own browser data folder), so switching accounts is just clicking a tab.
 // Open-source software (MIT License). Copyright (c) 2026 Gerizon Information Technology Solutions.
@@ -32,8 +32,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTrademark("Claude is a trademark of Anthropic, PBC. This product is not affiliated with Anthropic.")]
 [assembly: AssemblyCompany("Gerizon Information Technology Solutions")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 Gerizon Information Technology Solutions")]
-[assembly: AssemblyVersion("2.2.0.0")]
-[assembly: AssemblyFileVersion("2.2.0.0")]
+[assembly: AssemblyVersion("2.3.0.0")]
+[assembly: AssemblyFileVersion("2.3.0.0")]
 
 namespace Gerizon.ClaudeMultiAccountLauncher
 {
@@ -54,6 +54,7 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         [DataMember] public string Name;
         [DataMember] public int ColorIndex;
         [DataMember] public bool SignedIn;
+        public bool Sleeping;   // not saved: tab closed to save memory, wakes when opened
     }
 
     [DataContract]
@@ -64,6 +65,11 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         [DataMember] public List<string> PendingDelete;   // data folders to remove at next start
         [DataMember] public int X, Y, Width, Height;
         [DataMember] public bool Maximized;
+        // Memory saver: minutes a hidden tab stays open before it goes to sleep.
+        // 0 = not set yet (use the default), -1 = never.
+        [DataMember] public int SleepMinutes;
+        public const int DefaultSleepMinutes = 15;
+        public int SleepAfter { get { return SleepMinutes == 0 ? DefaultSleepMinutes : SleepMinutes; } }
 
         static readonly object Gate = new object();
 
@@ -476,6 +482,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         {
             if (started) return;
             started = true;
+            Account.Sleeping = false;
+            loading.Text = "Opening Claude for " + Account.Name + "...";
             try
             {
                 var folder = Paths.BrowserData(Account.Id);
@@ -633,6 +641,65 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         {
             try { if (view != null) { Controls.Remove(view); view.Dispose(); view = null; } } catch { }
         }
+
+        // ---- memory saver
+        // Each account runs its own copy of the Edge engine, which can use several hundred MB.
+        // Hidden tabs are first asked to use less memory and paused, then closed ("asleep")
+        // after a while. Sign-ins are kept on disk, so a sleeping tab wakes signed in.
+
+        DateTime hiddenSince = DateTime.MaxValue;
+
+        bool Running { get { return started && view != null && view.CoreWebView2 != null; } }
+
+        public void OnHidden()
+        {
+            hiddenSince = DateTime.UtcNow;
+            if (!Running) return;
+            try { view.CoreWebView2.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Low; } catch { }
+        }
+
+        public void OnShown()
+        {
+            hiddenSince = DateTime.MaxValue;
+            if (Account.Sleeping) { Account.Sleeping = false; owner.RefreshTabs(); }
+            if (!Running) return;
+            try
+            {
+                var core = view.CoreWebView2;
+                if (core.IsSuspended) core.Resume();
+                core.MemoryUsageTargetLevel = CoreWebView2MemoryUsageTargetLevel.Normal;
+            }
+            catch { }
+        }
+
+        // Called about once a minute for tabs that are not on screen.
+        public async void Tick(int sleepAfterMinutes)
+        {
+            if (!Running || hiddenSince == DateTime.MaxValue) return;
+            var core = view.CoreWebView2;
+            bool busy = false;
+            try { busy = core.IsDocumentPlayingAudio; } catch { }
+            if (busy) return;   // never interrupt voice or audio
+            double hidden = (DateTime.UtcNow - hiddenSince).TotalMinutes;
+            if (sleepAfterMinutes > 0 && hidden >= sleepAfterMinutes) { Sleep(); return; }
+            if (hidden >= 2)
+            {
+                try { if (!core.IsSuspended) await core.TrySuspendAsync(); } catch { }
+            }
+        }
+
+        public void Sleep()
+        {
+            if (!started) return;
+            Shutdown();
+            env = null;
+            started = false;
+            Account.Sleeping = true;
+            loading.Text = "This tab is asleep to save memory.\nIt wakes up, still signed in, when you open it.";
+            if (!Controls.Contains(loading)) Controls.Add(loading);
+            loading.BringToFront();
+            owner.RefreshTabs();
+        }
     }
 
     // ------------------------------------------------------------------ tab strip
@@ -672,7 +739,8 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             using (var img = Look.Avatar(Account, av)) g.DrawImage(img, Ui.S(10), (Height - av) / 2 + Ui.S(1));
             var textRect = new Rectangle(Ui.S(10) + av + Ui.S(8), 0, Width - av - Ui.S(26), Height);
             using (var f = new Font("Segoe UI", 9.75f, Active ? FontStyle.Bold : FontStyle.Regular))
-                TextRenderer.DrawText(g, Account.Name, f, textRect, Active ? Look.Text : Look.Muted,
+                TextRenderer.DrawText(g, Account.Name + (Account.Sleeping && !Active ? "  (asleep)" : ""), f, textRect,
+                    Active ? Look.Text : (Account.Sleeping ? Color.FromArgb(160, 158, 152) : Look.Muted),
                     TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             if (!Account.SignedIn)
                 using (var b = new SolidBrush(Look.Accent)) g.FillEllipse(b, Width - Ui.S(14), Ui.S(8), Ui.S(7), Ui.S(7));
@@ -749,6 +817,47 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             var start = store.Accounts.FirstOrDefault(a => a.Id == store.ActiveId) ?? store.Accounts.FirstOrDefault();
             if (start != null) Select(start); else ShowEmpty();
             LayoutBar();
+
+            var memoryTimer = new System.Windows.Forms.Timer { Interval = 60 * 1000 };
+            memoryTimer.Tick += delegate
+            {
+                foreach (var kv in pages)
+                    if (active == null || kv.Key != active.Id) kv.Value.Tick(store.SleepAfter);
+            };
+            memoryTimer.Start();
+        }
+
+        public void RefreshTabs()
+        {
+            foreach (Control c in tabArea.Controls) c.Invalidate();
+        }
+
+        void SleepOthersNow()
+        {
+            foreach (var kv in pages)
+                if (active == null || kv.Key != active.Id) kv.Value.Sleep();
+            GC.Collect();
+        }
+
+        ToolStripMenuItem MemoryMenu()
+        {
+            var mem = new ToolStripMenuItem("Memory saver");
+            var now = new ToolStripMenuItem("Put other tabs to sleep now");
+            now.Click += delegate { SleepOthersNow(); };
+            mem.DropDownItems.Add(now);
+            mem.DropDownItems.Add(new ToolStripSeparator());
+            mem.DropDownItems.Add(new ToolStripMenuItem("Put tabs to sleep when not used for:") { Enabled = false });
+            int[] choices = { 5, 15, 30, 60, 120, -1 };
+            foreach (int c in choices)
+            {
+                int minutes = c;
+                string label = minutes < 0 ? "Never" : minutes < 60 ? minutes + " minutes" : (minutes / 60) + (minutes == 60 ? " hour" : " hours");
+                if (minutes == Store.DefaultSleepMinutes) label += " (recommended)";
+                var item = new ToolStripMenuItem("    " + label) { Checked = store.SleepAfter == minutes };
+                item.Click += delegate { store.SleepMinutes = minutes; store.Save(); };
+                mem.DropDownItems.Add(item);
+            }
+            return mem;
         }
 
         Panel BuildEmptyState()
@@ -829,12 +938,14 @@ namespace Gerizon.ClaudeMultiAccountLauncher
         public void Select(Account a)
         {
             if (a == null) { ShowEmpty(); return; }
+            if (active != null && active != a && pages.ContainsKey(active.Id)) pages[active.Id].OnHidden();
             active = a;
             store.ActiveId = a.Id;
             store.Save();
             empty.Visible = false;
             foreach (var kv in pages) kv.Value.Visible = kv.Key == a.Id;
             var page = pages[a.Id];
+            page.OnShown();
             page.BringToFront();
             page.EnsureStarted();
             page.FocusView();
@@ -881,7 +992,7 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             help.Click += delegate { ShowHelp(); };
             var about = new ToolStripMenuItem("About");
             about.Click += delegate { ShowAbout(); };
-            m.Items.Add(add); m.Items.Add(help); m.Items.Add(about);
+            m.Items.Add(add); m.Items.Add(MemoryMenu()); m.Items.Add(new ToolStripSeparator()); m.Items.Add(help); m.Items.Add(about);
             m.Closed += delegate { BeginInvoke((MethodInvoker)delegate { m.Dispose(); }); };
             m.Show(allBtn, new Point(0, allBtn.Height));
         }
@@ -909,7 +1020,9 @@ namespace Gerizon.ClaudeMultiAccountLauncher
             right.Click += delegate { MoveTab(a, 1); };
             var remove = new ToolStripMenuItem("Delete account...") { ForeColor = Color.FromArgb(185, 28, 28) };
             remove.Click += delegate { Remove(a); };
-            m.Items.AddRange(new ToolStripItem[] { back, home, reload, paste, new ToolStripSeparator(), rename, color, left, right, new ToolStripSeparator(), remove });
+            var sleep = new ToolStripMenuItem("Put to sleep now") { Enabled = a != active && !a.Sleeping };
+            sleep.Click += delegate { page.Sleep(); };
+            m.Items.AddRange(new ToolStripItem[] { back, home, reload, paste, sleep, new ToolStripSeparator(), rename, color, left, right, new ToolStripSeparator(), remove });
             m.Closed += delegate { BeginInvoke((MethodInvoker)delegate { m.Dispose(); }); };
             if (below) m.Show(anchor, new Point(anchor.Width, anchor.Height), ToolStripDropDownDirection.BelowLeft);
             else m.Show(anchor, new Point(0, anchor.Height));

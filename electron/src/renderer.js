@@ -32,6 +32,7 @@
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = a.name;
+      if (a.sleeping && a.id !== state.activeId) { tab.classList.add('sleeping'); tab.title += '  ·  asleep to save memory'; }
       tab.append(avatar, name);
       if (!a.signedIn) {
         const dot = document.createElement('span');

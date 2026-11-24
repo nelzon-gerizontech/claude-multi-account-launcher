@@ -59,7 +59,7 @@ const storeFile = () => path.join(dataDir(), 'accounts.json');
 const partitionName = id => 'persist:acct-' + id;
 const partitionDir = id => path.join(dataDir(), 'Partitions', 'acct-' + id);
 
-let store = { accounts: [], activeId: null, pendingDelete: [], bounds: null, maximized: false };
+let store = { accounts: [], activeId: null, pendingDelete: [], bounds: null, maximized: false, sleepMinutes: 15 };
 
 function loadStore() {
   try {
@@ -69,6 +69,9 @@ function loadStore() {
   store.accounts = (Array.isArray(store.accounts) ? store.accounts : [])
     .filter(a => a && /^[a-f0-9]{12}$/.test(a.id) && typeof a.name === 'string')
     .map(a => ({ id: a.id, name: a.name.slice(0, 40), color: (a.color | 0) % 8, signedIn: !!a.signedIn }));
+  if (!Number.isFinite(store.sleepMinutes)) store.sleepMinutes = 15;
+  // Tabs that were never opened this session count as asleep.
+  for (const a of store.accounts) a.sleeping = a.id !== store.activeId;
   store.pendingDelete = (Array.isArray(store.pendingDelete) ? store.pendingDelete : [])
     .filter(id => /^[a-f0-9]{12}$/.test(id));
   if (!store.accounts.some(a => a.id === store.activeId)) {
@@ -80,7 +83,7 @@ function saveStore() {
   try {
     fs.mkdirSync(dataDir(), { recursive: true });
     const tmp = storeFile() + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(store, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(store, (k, v) => (k === 'sleeping' ? undefined : v), 2));
     fs.renameSync(tmp, storeFile());
   } catch (e) { log('save failed', e.message); }
 }
@@ -228,9 +231,40 @@ function getView(acct) {
 
 // ---------------------------------------------------------------- actions
 
+// ---- memory saver: tabs not used for a while are closed ("asleep") and reopen,
+// still signed in, when clicked. Sign-ins are kept on disk.
+const hiddenSince = new Map(); // account id -> time the tab was last hidden
+
+function sleepAccount(id) {
+  const view = views.get(id);
+  if (!view || id === store.activeId) return;
+  win.contentView.removeChildView(view);
+  view.webContents.close();
+  views.delete(id);
+  hiddenSince.delete(id);
+  const acct = findAccount(id);
+  if (acct) acct.sleeping = true;
+  pushState();
+}
+
+function memoryTick() {
+  const limit = store.sleepMinutes;
+  if (!(limit > 0)) return;
+  const now = Date.now();
+  for (const [id, since] of hiddenSince) {
+    const view = views.get(id);
+    if (!view || id === store.activeId) continue;
+    if (view.webContents.isCurrentlyAudible()) continue; // never interrupt audio or voice
+    if (now - since >= limit * 60000) sleepAccount(id);
+  }
+}
+
 function selectAccount(id) {
   const acct = findAccount(id);
   if (!acct) return;
+  if (store.activeId && store.activeId !== id) hiddenSince.set(store.activeId, Date.now());
+  hiddenSince.delete(id);
+  acct.sleeping = false;
   store.activeId = id;
   const view = getView(acct);
   layout();
@@ -414,6 +448,7 @@ function accountMenuItems(id) {
     { label: 'Back to Claude home', click: () => { selectAccount(id); goHome(); } },
     { label: 'Reload', click: () => { selectAccount(id); reloadActive(false); } },
     { label: 'Paste sign-in link', click: () => pasteSignInLink(id) },
+    { label: 'Put to sleep now', enabled: id !== store.activeId && views.has(id), click: () => sleepAccount(id) },
     { type: 'separator' },
     { label: 'Delete account…', click: () => deleteAccount(id) },
   ];
@@ -468,6 +503,20 @@ function buildAppMenu() {
         { label: 'Actual size', accelerator: 'CmdOrCtrl+0', enabled: hasActive, click: () => zoom(0) },
         { type: 'separator' },
         { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Memory saver: put unused tabs to sleep after',
+          submenu: [5, 15, 30, 60, 120, 0].map(m => ({
+            label: m === 0 ? 'Never' : (m < 60 ? m + ' minutes' : m / 60 + (m === 60 ? ' hour' : ' hours')) + (m === 15 ? ' (recommended)' : ''),
+            type: 'radio',
+            checked: store.sleepMinutes === m,
+            click: () => { store.sleepMinutes = m; saveStore(); },
+          })),
+        },
+        {
+          label: 'Put other tabs to sleep now',
+          click: () => { for (const id of [...views.keys()]) if (id !== store.activeId) sleepAccount(id); },
+        },
       ],
     },
     {
@@ -629,6 +678,11 @@ async function runSelfTest() {
     check('user agent looks like normal Chrome', !/Electron|Launcher/i.test(ua) && /Chrome\//.test(ua), ua);
     renameAccount(client.id, 'Client B');
     check('rename', findAccount(client.id).name === 'Client B');
+    sleepAccount(client.id);
+    check('memory saver closes a hidden tab', !views.has(client.id) && findAccount(client.id).sleeping);
+    selectAccount(client.id);
+    check('a sleeping tab wakes when opened', views.has(client.id) && !findAccount(client.id).sleeping);
+    selectAccount(work.id);
     moveAccount(client.id, -2);
     check('move', store.accounts[0].id === client.id);
     await waitLoad(views.get(personal.id).webContents);
@@ -705,6 +759,7 @@ if (!app.requestSingleInstanceLock()) {
     purgeDeleted(true);
     buildAppMenu();
     createWindow();
+    setInterval(memoryTick, 60000);
   });
   app.on('activate', () => { if (!win) createWindow(); });
   app.on('window-all-closed', () => app.quit());

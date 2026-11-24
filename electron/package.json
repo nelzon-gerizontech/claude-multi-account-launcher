@@ -1,7 +1,7 @@
 {
   "name": "claude-multi-account-launcher",
   "productName": "Claude Multi-Account Launcher",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Switch between several Claude accounts in tabs. Each tab keeps its own sign-in.",
   "main": "src/main.js",
   "author": {

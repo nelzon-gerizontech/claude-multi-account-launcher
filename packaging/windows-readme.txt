@@ -21,6 +21,12 @@ Click + (or press Ctrl+T), name the tab, then sign in inside it.
 If Claude emails you a sign-in link, don't click it. Right-click the link,
 choose "Copy link", then click "Paste sign-in link" in the tab.
 
+SAVING MEMORY
+Each account runs its own copy of the Edge browser engine, so every open
+account uses memory. Tabs you haven't used for 15 minutes go to sleep and
+show "(asleep)". Click one to wake it; it stays signed in. Change the time,
+or put tabs to sleep straight away, under the menu button: Memory saver.
+
 STUCK ON AN ERROR PAGE?
 If a tab ends up on another company's page (for example a connector sign-in
 that shows an error), click "Back to Claude" in the blue strip, or use the

@@ -124,3 +124,5 @@ body.mac.fullscreen #bar { padding-left: 8px; }
 #away-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #away button { flex: none; padding: 6px 14px; }
 #away-back { border: 1px solid #C9C6BE; border-radius: 8px; background: #FFFFFF; cursor: pointer; }
+
+.tab.sleeping .name, .tab.sleeping .avatar { opacity: .5; }
